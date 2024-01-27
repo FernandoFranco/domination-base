@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <OneButton.h>
 #include <Adafruit_NeoPixel.h>
-// #include <TM1637Display.h>
+#include <TM1637Display.h>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // DEFINES
@@ -39,13 +39,17 @@ const int STATE_CONFIG_DEFENSE_TIME = 1;
 const int STATE_GAME_STARTED = 2;
 const int STATE_GAME_FINISHED = 3;
 
-const int CAPTURE_TIME_STEP = 5;
-const int CAPTURE_TIME_MIN_VALUE = 5;
-const int CAPTURE_TIME_MAX_VALUE = 20;
+const long TIME_SECOND = 1000;
+const long TIME_MINUTE = 60 * TIME_SECOND;
+const long TIME_HOUR = 60 * TIME_MINUTE;
 
-const int DEFENSE_TIME_STEP = 10;
-const int DEFENSE_TIME_MIN_VALUE = 10;
-const int DEFENSE_TIME_MAX_VALUE = 600;
+const long CAPTURE_TIME_STEP = 5 * TIME_SECOND;
+const long CAPTURE_TIME_MIN_VALUE = 5 * TIME_SECOND;
+const long CAPTURE_TIME_MAX_VALUE = TIME_MINUTE;
+
+const long DEFENSE_TIME_STEP = 10 * TIME_MINUTE;
+const long DEFENSE_TIME_MIN_VALUE = 10 * TIME_MINUTE;
+const long DEFENSE_TIME_MAX_VALUE = 5 * TIME_HOUR;
 
 const int TEAM_RED = 0;
 const int TEAM_GREEN = 1;
@@ -68,8 +72,9 @@ int GAME_CAPTURE_TIME = CAPTURE_TIME_MIN_VALUE;
 int GAME_DEFENSE_TIME = DEFENSE_TIME_MIN_VALUE;
 
 int GAME_TEAM = TEAM_NULL;
-long GAME_STARTED_AT = 0;
-long GAME_TEAM_TIME[3] = { 0, 0, 0 };
+long unsigned GAME_STARTED_AT = 0;
+long unsigned GAME_TIMER_STARTED_AT = 0;
+long unsigned GAME_TEAM_TIME[3] = { 0, 0, 0 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // INITIALIZERS
@@ -98,7 +103,7 @@ void handleLongPressStopBtnB();
 
 void handleDuringLongPressCaptureTeam(int pressedTime, int team);
 
-int transformToDisplayValue(int secondsOrMinutes);
+int getDisplayValueFromMs(int secondsOrMinutes);
 
 void turnOnLed(int index, int color[3]);
 void turnOnLedProgress(long progress, long total, int color[3]);
@@ -136,6 +141,10 @@ void loop() {
   if (GAME_STATE == STATE_GAME_STARTED) {
     turnOnLedIddle(TEAM_COLOR[GAME_TEAM]);
 
+    if (GAME_TEAM != TEAM_NULL) {
+      // if (GAME_TEAM_TIME[GAME_TEAM] + )
+    }
+
     Serial.print("R: ");
     Serial.print(GAME_TEAM_TIME[TEAM_RED]);
     Serial.print(", G: ");
@@ -160,13 +169,16 @@ void handleDuringLongPressCaptureTeam(int pressedTime, int team) {
     if (pressedTime <= GAME_CAPTURE_TIME * 1000) {
       turnOnLedProgress(pressedTime, GAME_CAPTURE_TIME * 1000, TEAM_COLOR[team]);
     } else {      
-      GAME_TEAM = team;
       if (GAME_STARTED_AT == 0) {
         GAME_STARTED_AT = millis();
-        GAME_TEAM_TIME[TEAM_RED] = 0;
-        GAME_TEAM_TIME[TEAM_GREEN] = 0;
-        GAME_TEAM_TIME[TEAM_BLUE] = 0;
       }
+
+      if (GAME_TEAM != TEAM_NULL) {
+        GAME_TEAM_TIME[GAME_TEAM] += millis() - GAME_TIMER_STARTED_AT;
+      }
+
+      GAME_TEAM = team;
+      GAME_TIMER_STARTED_AT = millis();
     }
   }
 }
@@ -256,8 +268,14 @@ long getBtnPressedMs(OneButton btn) {
   return btn.getPressedMs() - BTN_HOLD_DURATION_TO_TRIGGER_LONG_PRESS;
 }
 
-int transformToDisplayValue(int secondsOrMinutes) {
-  return (secondsOrMinutes / 60 * 100) + (secondsOrMinutes % 60);
+int getDisplayValueFromMs(int ms) {
+  int hours = ms / TIME_HOUR;
+  ms %= TIME_HOUR;
+  int minutes = ms / TIME_MINUTE;
+  ms %= TIME_MINUTE;
+  int seconds = ms / TIME_SECOND;
+
+  return hours > 0 ? (hours * 100) + minutes : (minutes * 100) + seconds;
 }
 
 void turnOnLed(int index, int color[3]) {
