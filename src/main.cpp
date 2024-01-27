@@ -276,7 +276,7 @@ void handleDuringLongPressBtnB() {
 }
 
 void handleLongPressStopBtnB() {
-  if (GAME_STATE == STATE_CONFIG_DEFENSE_TIME && getBtnPressedMs(BtnG) >= TIME_SECOND) {
+  if (GAME_STATE == STATE_CONFIG_DEFENSE_TIME && getBtnPressedMs(BtnB) >= TIME_SECOND) {
     GAME_STATE = STATE_CONFIG_CAPTURE_TIME;
     return;
   }
