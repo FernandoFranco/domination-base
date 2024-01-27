@@ -47,7 +47,7 @@ const long CAPTURE_TIME_STEP = 5 * TIME_SECOND;
 const long CAPTURE_TIME_MIN_VALUE = 5 * TIME_SECOND;
 const long CAPTURE_TIME_MAX_VALUE = TIME_MINUTE;
 
-const long DEFENSE_TIME_STEP = 10 * TIME_MINUTE;
+const long DEFENSE_TIME_STEP = 1 * TIME_MINUTE;
 const long DEFENSE_TIME_MIN_VALUE = 1 * TIME_MINUTE;
 const long DEFENSE_TIME_MAX_VALUE = 5 * TIME_HOUR;
 
@@ -108,6 +108,7 @@ int getDisplayValueFromMs(long ms);
 void turnOnLed(int index, int color[3]);
 void turnOnLedProgress(long progress, long total, int color[3]);
 void turnOnLedIddle(int color[3]);
+void tuenOnLedFlashing(int color[3]);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // ARDUINO
@@ -152,9 +153,14 @@ void loop() {
       teamTime[GAME_TEAM] += currentTime;
 
       if (GAME_TEAM_TIME[GAME_TEAM] + currentTime >= GAME_DEFENSE_TIME) {
+        GAME_TEAM_TIME[GAME_TEAM] = GAME_DEFENSE_TIME;
         GAME_STATE = STATE_GAME_FINISHED;
       }
     }
+  }
+
+  if (GAME_STATE == STATE_GAME_FINISHED) {
+    tuenOnLedFlashing(TEAM_COLOR[GAME_TEAM]);
   }
 
   Serial.print("R: ");
@@ -308,8 +314,8 @@ void turnOnLedProgress(long progress, long total, int color[3]) {
 }
 
 void turnOnLedIddle(int color[3]) {
-  int ms = millis() % 1000;
-  int index = (LED_QTD * ms) / 1000;
+  int ms = millis() % TIME_SECOND;
+  int index = (LED_QTD * ms) / TIME_SECOND;
   turnOnLed(index, color);
 
   int nextIndex = index + (LED_QTD / 2);
@@ -317,4 +323,12 @@ void turnOnLedIddle(int color[3]) {
     nextIndex -= LED_QTD;
   }
   turnOnLed(nextIndex, color);
+}
+
+void tuenOnLedFlashing(int color[3]) {
+  int ms = millis() % TIME_SECOND;
+  if (ms < (TIME_SECOND / 2)) return;
+  for (int i = 0; i < LED_QTD; i += 1) {
+    turnOnLed(i, color);
+  }
 }
