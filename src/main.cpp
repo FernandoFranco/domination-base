@@ -103,7 +103,7 @@ void handleLongPressStopBtnB();
 
 void handleDuringLongPressCaptureTeam(int pressedTime, int team);
 
-int getDisplayValueFromMs(int secondsOrMinutes);
+int getDisplayValueFromMs(long ms);
 
 void turnOnLed(int index, int color[3]);
 void turnOnLedProgress(long progress, long total, int color[3]);
@@ -268,7 +268,7 @@ long getBtnPressedMs(OneButton btn) {
   return btn.getPressedMs() - BTN_HOLD_DURATION_TO_TRIGGER_LONG_PRESS;
 }
 
-int getDisplayValueFromMs(int ms) {
+int getDisplayValueFromMs(long ms) {
   int hours = ms / TIME_HOUR;
   ms %= TIME_HOUR;
   int minutes = ms / TIME_MINUTE;
