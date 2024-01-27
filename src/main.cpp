@@ -48,7 +48,7 @@ const long CAPTURE_TIME_MIN_VALUE = 5 * TIME_SECOND;
 const long CAPTURE_TIME_MAX_VALUE = TIME_MINUTE;
 
 const long DEFENSE_TIME_STEP = 10 * TIME_MINUTE;
-const long DEFENSE_TIME_MIN_VALUE = 10 * TIME_MINUTE;
+const long DEFENSE_TIME_MIN_VALUE = 1 * TIME_MINUTE;
 const long DEFENSE_TIME_MAX_VALUE = 5 * TIME_HOUR;
 
 const int TEAM_RED = 0;
@@ -68,13 +68,13 @@ int TEAM_COLOR[4][3] = {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 int GAME_STATE = STATE_CONFIG_CAPTURE_TIME;
-int GAME_CAPTURE_TIME = CAPTURE_TIME_MIN_VALUE;
-int GAME_DEFENSE_TIME = DEFENSE_TIME_MIN_VALUE;
+long  GAME_CAPTURE_TIME = CAPTURE_TIME_MIN_VALUE;
+long  GAME_DEFENSE_TIME = DEFENSE_TIME_MIN_VALUE;
 
 int GAME_TEAM = TEAM_NULL;
-long unsigned GAME_STARTED_AT = 0;
-long unsigned GAME_TIMER_STARTED_AT = 0;
-long unsigned GAME_TEAM_TIME[3] = { 0, 0, 0 };
+long GAME_STARTED_AT = 0;
+long GAME_TIMER_STARTED_AT = 0;
+long GAME_TEAM_TIME[3] = { 0, 0, 0 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // INITIALIZERS
@@ -138,20 +138,36 @@ void setup() {
 void loop() {
   leds.clear();
 
+  long teamTime[3] = {
+    GAME_TEAM_TIME[TEAM_RED],
+    GAME_TEAM_TIME[TEAM_GREEN],
+    GAME_TEAM_TIME[TEAM_BLUE]
+  };
+
   if (GAME_STATE == STATE_GAME_STARTED) {
     turnOnLedIddle(TEAM_COLOR[GAME_TEAM]);
 
     if (GAME_TEAM != TEAM_NULL) {
-      // if (GAME_TEAM_TIME[GAME_TEAM] + )
-    }
+      long currentTime = millis() - GAME_TIMER_STARTED_AT;
+      teamTime[GAME_TEAM] += currentTime;
 
-    Serial.print("R: ");
-    Serial.print(GAME_TEAM_TIME[TEAM_RED]);
-    Serial.print(", G: ");
-    Serial.print(GAME_TEAM_TIME[TEAM_GREEN]);
-    Serial.print(", B: ");
-    Serial.println(GAME_TEAM_TIME[TEAM_BLUE]);
+      if (GAME_TEAM_TIME[GAME_TEAM] + currentTime >= GAME_DEFENSE_TIME) {
+        GAME_STATE = STATE_GAME_FINISHED;
+      }
+    }
   }
+
+  Serial.print("R: ");
+  Serial.print(teamTime[TEAM_RED]);
+  Serial.print("\tG: ");
+  Serial.print(teamTime[TEAM_GREEN]);
+  Serial.print("\tB: ");
+  Serial.print(teamTime[TEAM_BLUE]);
+  Serial.print("\t\t");
+  Serial.print("CAPTURE ");
+  Serial.print(GAME_CAPTURE_TIME);
+  Serial.print("\tDEFENSE ");
+  Serial.println(GAME_DEFENSE_TIME);
 
   BtnR.tick();
   BtnG.tick();
@@ -166,8 +182,8 @@ void loop() {
 
 void handleDuringLongPressCaptureTeam(int pressedTime, int team) {
   if (GAME_STATE == STATE_GAME_STARTED && GAME_TEAM != team) {
-    if (pressedTime <= GAME_CAPTURE_TIME * 1000) {
-      turnOnLedProgress(pressedTime, GAME_CAPTURE_TIME * 1000, TEAM_COLOR[team]);
+    if (pressedTime <= GAME_CAPTURE_TIME) {
+      turnOnLedProgress(pressedTime, GAME_CAPTURE_TIME, TEAM_COLOR[team]);
     } else {      
       if (GAME_STARTED_AT == 0) {
         GAME_STARTED_AT = millis();
@@ -213,18 +229,18 @@ void handleDuringLongPressBtnG() {
   long pressedTime = getBtnPressedMs(BtnG);
 
   if (GAME_STATE == STATE_CONFIG_CAPTURE_TIME || GAME_STATE == STATE_CONFIG_DEFENSE_TIME) {
-    if (pressedTime > 1000) return;
-    turnOnLedProgress(pressedTime, 1000, COLOR_WHITE);
+    if (pressedTime > TIME_SECOND) return;
+    turnOnLedProgress(pressedTime, TIME_SECOND, COLOR_WHITE);
   }
   handleDuringLongPressCaptureTeam(pressedTime, TEAM_GREEN);
 }
 
 void handleLongPressStopBtnG() {
-  if (GAME_STATE == STATE_CONFIG_CAPTURE_TIME && getBtnPressedMs(BtnG) >= 1000) {
+  if (GAME_STATE == STATE_CONFIG_CAPTURE_TIME && getBtnPressedMs(BtnG) >= TIME_SECOND) {
     GAME_STATE = STATE_CONFIG_DEFENSE_TIME;
     return;
   }
-  if (GAME_STATE == STATE_CONFIG_DEFENSE_TIME && getBtnPressedMs(BtnG) >= 1000) {
+  if (GAME_STATE == STATE_CONFIG_DEFENSE_TIME && getBtnPressedMs(BtnG) >= TIME_SECOND) {
     GAME_STATE = STATE_GAME_STARTED;
     return;
   }
@@ -247,14 +263,14 @@ void handleDuringLongPressBtnB() {
   long pressedTime = getBtnPressedMs(BtnB);
 
   if (GAME_STATE == STATE_CONFIG_DEFENSE_TIME) {
-    if (pressedTime > 1000) return;
-    turnOnLedProgress(pressedTime, 1000, COLOR_WHITE);
+    if (pressedTime > TIME_SECOND) return;
+    turnOnLedProgress(pressedTime, TIME_SECOND, COLOR_WHITE);
   }
   handleDuringLongPressCaptureTeam(pressedTime, TEAM_BLUE);
 }
 
 void handleLongPressStopBtnB() {
-  if (GAME_STATE == STATE_CONFIG_DEFENSE_TIME && getBtnPressedMs(BtnG) >= 1000) {
+  if (GAME_STATE == STATE_CONFIG_DEFENSE_TIME && getBtnPressedMs(BtnG) >= TIME_SECOND) {
     GAME_STATE = STATE_CONFIG_CAPTURE_TIME;
     return;
   }
