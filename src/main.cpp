@@ -11,13 +11,16 @@
 #define PIN_BTN_G 3 // GREEN
 #define PIN_BTN_B 4 // BLUE
 
-// #define DISPLAY_DIO 6
-// #define DISPLAY_CLK 7
-// #define DISPLAY_PIN_POT A0
-// #define SHOW_DOTS 0b01000000
+#define PIN_ALARM 5
+
+#define PIN_DISPLAY_DIO 6
+#define PIN_DISPLAY_CLK 7
+#define SHOW_DOTS 0b01000000
 
 #define LED_DIN 8
 #define LED_QTD 30
+
+#define PIN_BUZZER 9
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // CONSTANTS
@@ -47,7 +50,7 @@ const long CAPTURE_TIME_STEP = 5 * TIME_SECOND;
 const long CAPTURE_TIME_MIN_VALUE = 5 * TIME_SECOND;
 const long CAPTURE_TIME_MAX_VALUE = TIME_MINUTE;
 
-const long DEFENSE_TIME_STEP = 1 * TIME_MINUTE;
+const long DEFENSE_TIME_STEP = 10 * TIME_MINUTE;
 const long DEFENSE_TIME_MIN_VALUE = 1 * TIME_MINUTE;
 const long DEFENSE_TIME_MAX_VALUE = 5 * TIME_HOUR;
 
@@ -68,10 +71,11 @@ int TEAM_COLOR[4][3] = {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 int GAME_STATE = STATE_CONFIG_CAPTURE_TIME;
-long  GAME_CAPTURE_TIME = CAPTURE_TIME_MIN_VALUE;
-long  GAME_DEFENSE_TIME = DEFENSE_TIME_MIN_VALUE;
+long GAME_CAPTURE_TIME = CAPTURE_TIME_MIN_VALUE;
+long GAME_DEFENSE_TIME = DEFENSE_TIME_MIN_VALUE;
 
 int GAME_TEAM = TEAM_NULL;
+bool GAME_ALARM = false;
 long GAME_STARTED_AT = 0;
 long GAME_TIMER_STARTED_AT = 0;
 long GAME_TEAM_TIME[3] = { 0, 0, 0 };
@@ -81,7 +85,7 @@ long GAME_TEAM_TIME[3] = { 0, 0, 0 };
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 Adafruit_NeoPixel leds(LED_QTD, LED_DIN, NEO_GRB + NEO_KHZ800);
-// TM1637Display display(DISPLAY_CLK, DISPLAY_DIO);
+TM1637Display display(PIN_DISPLAY_CLK, PIN_DISPLAY_DIO);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // FUNCTION DECLARATIONS
@@ -102,6 +106,10 @@ void handleDuringLongPressBtnB();
 void handleLongPressStopBtnB();
 
 void handleDuringLongPressCaptureTeam(int pressedTime, int team);
+void handleDuringLongPressRestartGame(int pressedTime);
+
+void buzzerFeedback(int feedbackCount);
+void changeStateWithFeedback(int newState, int feedbackCount);
 
 int getDisplayValueFromMs(long ms);
 
@@ -132,54 +140,56 @@ void setup() {
   BtnB.attachDuringLongPress(handleDuringLongPressBtnB);
   BtnB.attachLongPressStop(handleLongPressStopBtnB);
 
+  pinMode(PIN_ALARM, OUTPUT);
+  pinMode(PIN_BUZZER, OUTPUT);
+  display.setBrightness(0x0f);
+
   leds.begin();
-  // display.setBrightness(0x0f);
+
+  buzzerFeedback(1);
 }
 
 void loop() {
   leds.clear();
 
-  long teamTime[3] = {
-    GAME_TEAM_TIME[TEAM_RED],
-    GAME_TEAM_TIME[TEAM_GREEN],
-    GAME_TEAM_TIME[TEAM_BLUE]
-  };
+  int showTime = 0;
+  switch (GAME_STATE)
+  {
+    case STATE_CONFIG_CAPTURE_TIME:
+      showTime = getDisplayValueFromMs(GAME_CAPTURE_TIME);
+      break;
+    
+    case STATE_CONFIG_DEFENSE_TIME:
+      showTime = getDisplayValueFromMs(GAME_DEFENSE_TIME);
+      break;
+    
+    case STATE_GAME_STARTED:
+      turnOnLedIddle(TEAM_COLOR[GAME_TEAM]);
+      if (GAME_TEAM != TEAM_NULL) {
+        long currentTime = millis() - GAME_TIMER_STARTED_AT;
+        showTime = getDisplayValueFromMs(GAME_DEFENSE_TIME - (GAME_TEAM_TIME[GAME_TEAM] + currentTime));
 
-  if (GAME_STATE == STATE_GAME_STARTED) {
-    turnOnLedIddle(TEAM_COLOR[GAME_TEAM]);
-
-    if (GAME_TEAM != TEAM_NULL) {
-      long currentTime = millis() - GAME_TIMER_STARTED_AT;
-      teamTime[GAME_TEAM] += currentTime;
-
-      if (GAME_TEAM_TIME[GAME_TEAM] + currentTime >= GAME_DEFENSE_TIME) {
-        GAME_TEAM_TIME[GAME_TEAM] = GAME_DEFENSE_TIME;
-        GAME_STATE = STATE_GAME_FINISHED;
+        if (GAME_TEAM_TIME[GAME_TEAM] + currentTime >= GAME_DEFENSE_TIME) {
+          GAME_TEAM_TIME[GAME_TEAM] = GAME_DEFENSE_TIME;
+          GAME_STATE = STATE_GAME_FINISHED;
+          GAME_ALARM = true;
+        }
       }
-    }
-  }
+      break;
 
-  if (GAME_STATE == STATE_GAME_FINISHED) {
-    tuenOnLedFlashing(TEAM_COLOR[GAME_TEAM]);
+    case STATE_GAME_FINISHED:
+      tuenOnLedFlashing(TEAM_COLOR[GAME_TEAM]);
+      digitalWrite(PIN_ALARM, GAME_ALARM ? HIGH : LOW);
+      showTime = getDisplayValueFromMs(GAME_DEFENSE_TIME - GAME_TEAM_TIME[GAME_TEAM]);
+      break;
   }
-
-  Serial.print("R: ");
-  Serial.print(teamTime[TEAM_RED]);
-  Serial.print("\tG: ");
-  Serial.print(teamTime[TEAM_GREEN]);
-  Serial.print("\tB: ");
-  Serial.print(teamTime[TEAM_BLUE]);
-  Serial.print("\t\t");
-  Serial.print("CAPTURE ");
-  Serial.print(GAME_CAPTURE_TIME);
-  Serial.print("\tDEFENSE ");
-  Serial.println(GAME_DEFENSE_TIME);
 
   BtnR.tick();
   BtnG.tick();
   BtnB.tick();
   
   leds.show();
+  display.showNumberDecEx(showTime, SHOW_DOTS, true);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -201,7 +211,32 @@ void handleDuringLongPressCaptureTeam(int pressedTime, int team) {
 
       GAME_TEAM = team;
       GAME_TIMER_STARTED_AT = millis();
+
+      buzzerFeedback(3);
     }
+  }
+}
+
+void handleDuringLongPressRestartGame(int pressedTime) {
+  if (GAME_STATE != STATE_GAME_FINISHED) return;
+
+  if (GAME_ALARM || pressedTime >= (1 * TIME_SECOND)) {
+    buzzerFeedback(2);
+    GAME_ALARM = false;
+  }
+
+  if (BtnR.state() == 6 && BtnG.state() == 6 && BtnB.state() == 6) {
+    GAME_TEAM = TEAM_NULL;
+    GAME_ALARM = false;
+    GAME_STARTED_AT = 0;
+    GAME_TIMER_STARTED_AT = 0;
+    GAME_TEAM_TIME[0] = 0;
+    GAME_TEAM_TIME[1] = 0;
+    GAME_TEAM_TIME[2] = 0;
+
+    // GAME_CAPTURE_TIME = CAPTURE_TIME_MIN_VALUE;
+    // GAME_DEFENSE_TIME = DEFENSE_TIME_MIN_VALUE;
+    GAME_STATE = STATE_CONFIG_CAPTURE_TIME;
   }
 }
 
@@ -209,14 +244,21 @@ void handleDuringLongPressCaptureTeam(int pressedTime, int team) {
 // BTN RED
 //--------------------------------------------------------------------------------------------------
 
-void handleClickBtnR() {}
+void handleClickBtnR() {
+  if (GAME_STATE == STATE_GAME_FINISHED) {
+    buzzerFeedback(1);
+    GAME_TEAM = TEAM_RED;
+  }
+}
 
 void handleDuringLongPressBtnR() {
   long pressedTime = getBtnPressedMs(BtnR);
   handleDuringLongPressCaptureTeam(pressedTime, TEAM_RED);
+  handleDuringLongPressRestartGame(pressedTime);
 }
 
-void handleLongPressStopBtnR() {}
+void handleLongPressStopBtnR() {
+}
 
 //--------------------------------------------------------------------------------------------------
 // BTN GREEN
@@ -224,10 +266,16 @@ void handleLongPressStopBtnR() {}
 
 void handleClickBtnG() {
   if (GAME_STATE == STATE_CONFIG_CAPTURE_TIME) {
+    buzzerFeedback(1);
     GAME_CAPTURE_TIME = min(GAME_CAPTURE_TIME + CAPTURE_TIME_STEP, CAPTURE_TIME_MAX_VALUE);
   }
   if (GAME_STATE == STATE_CONFIG_DEFENSE_TIME) {
+    buzzerFeedback(1);
     GAME_DEFENSE_TIME = min(GAME_DEFENSE_TIME + DEFENSE_TIME_STEP, DEFENSE_TIME_MAX_VALUE);
+  }
+  if (GAME_STATE == STATE_GAME_FINISHED) {
+    buzzerFeedback(1);
+    GAME_TEAM = TEAM_GREEN;
   }
 }
 
@@ -239,15 +287,16 @@ void handleDuringLongPressBtnG() {
     turnOnLedProgress(pressedTime, TIME_SECOND, COLOR_WHITE);
   }
   handleDuringLongPressCaptureTeam(pressedTime, TEAM_GREEN);
+  handleDuringLongPressRestartGame(pressedTime);
 }
 
 void handleLongPressStopBtnG() {
   if (GAME_STATE == STATE_CONFIG_CAPTURE_TIME && getBtnPressedMs(BtnG) >= TIME_SECOND) {
-    GAME_STATE = STATE_CONFIG_DEFENSE_TIME;
+    changeStateWithFeedback(STATE_CONFIG_DEFENSE_TIME, 2);
     return;
   }
   if (GAME_STATE == STATE_CONFIG_DEFENSE_TIME && getBtnPressedMs(BtnG) >= TIME_SECOND) {
-    GAME_STATE = STATE_GAME_STARTED;
+    changeStateWithFeedback(STATE_GAME_STARTED, 3);
     return;
   }
 }
@@ -258,10 +307,16 @@ void handleLongPressStopBtnG() {
 
 void handleClickBtnB() {
   if (GAME_STATE == STATE_CONFIG_CAPTURE_TIME) {
+    buzzerFeedback(1);
     GAME_CAPTURE_TIME = max(GAME_CAPTURE_TIME - CAPTURE_TIME_STEP, CAPTURE_TIME_MIN_VALUE);
   }
   if (GAME_STATE == STATE_CONFIG_DEFENSE_TIME) {
+    buzzerFeedback(1);
     GAME_DEFENSE_TIME = max(GAME_DEFENSE_TIME - DEFENSE_TIME_STEP, DEFENSE_TIME_MIN_VALUE);
+  }
+  if (GAME_STATE == STATE_GAME_FINISHED) {
+    buzzerFeedback(1);
+    GAME_TEAM = TEAM_BLUE;
   }
 }
 
@@ -273,11 +328,12 @@ void handleDuringLongPressBtnB() {
     turnOnLedProgress(pressedTime, TIME_SECOND, COLOR_WHITE);
   }
   handleDuringLongPressCaptureTeam(pressedTime, TEAM_BLUE);
+  handleDuringLongPressRestartGame(pressedTime);
 }
 
 void handleLongPressStopBtnB() {
   if (GAME_STATE == STATE_CONFIG_DEFENSE_TIME && getBtnPressedMs(BtnB) >= TIME_SECOND) {
-    GAME_STATE = STATE_CONFIG_CAPTURE_TIME;
+    changeStateWithFeedback(STATE_CONFIG_CAPTURE_TIME, 2);
     return;
   }
 }
@@ -288,6 +344,21 @@ void handleLongPressStopBtnB() {
 
 long getBtnPressedMs(OneButton btn) {
   return btn.getPressedMs() - BTN_HOLD_DURATION_TO_TRIGGER_LONG_PRESS;
+}
+
+void buzzerFeedback(int feedbackCount) {
+  while (feedbackCount > 0) {
+    feedbackCount -= 1;
+    digitalWrite(PIN_BUZZER, HIGH);
+    delay(64);
+    digitalWrite(PIN_BUZZER, LOW);
+    delay(64);
+  }
+}
+
+void changeStateWithFeedback(int newState, int feedbackCount) {
+  buzzerFeedback(feedbackCount);
+  GAME_STATE = newState;
 }
 
 int getDisplayValueFromMs(long ms) {
